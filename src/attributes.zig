@@ -15,15 +15,15 @@ pub const AttributeInfo = union(enum) {
     unknown: void,
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) anyerror!AttributeInfo {
-        var attribute_name_index = try reader.readIntBig(u16);
-        var attribute_length = try reader.readIntBig(u32);
+        const attribute_name_index = try reader.readInt(u16, std.builtin.Endian.big);
+        const attribute_length = try reader.readInt(u32, std.builtin.Endian.big);
 
-        var info = try allocator.alloc(u8, attribute_length);
+        const info = try allocator.alloc(u8, attribute_length);
         defer allocator.free(info);
         _ = try reader.readAll(info);
 
         var fbs = std.io.fixedBufferStream(info);
-        var name = constant_pool.get(attribute_name_index).utf8.bytes;
+        const name = constant_pool.get(attribute_name_index).utf8.bytes;
 
         inline for (std.meta.fields(AttributeInfo)) |field| {
             if (field.type == void) {} else {
@@ -58,21 +58,6 @@ pub const AttributeInfo = union(enum) {
             }
         }
     }
-
-    pub fn encode(self: AttributeInfo, writer: anytype) !void {
-        inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.type == void) continue;
-
-            if (std.meta.activeTag(self) == @field(std.meta.Tag(AttributeInfo), field.name)) {
-                var attr = @field(self, field.name);
-
-                try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.type, "name")));
-                try writer.writeIntBig(u32, attr.calcAttrLen());
-
-                try attr.encode(writer);
-            }
-        }
-    }
 };
 
 pub const ExceptionTableEntry = packed struct {
@@ -87,18 +72,11 @@ pub const ExceptionTableEntry = packed struct {
 
     pub fn decode(reader: anytype) !ExceptionTableEntry {
         var entry: ExceptionTableEntry = undefined;
-        entry.start_pc = try reader.readIntBig(u16);
-        entry.end_pc = try reader.readIntBig(u16);
-        entry.handler_pc = try reader.readIntBig(u16);
-        entry.catch_type = try reader.readIntBig(u16);
+        entry.start_pc = try reader.readInt(u16, std.builtin.Endian.big);
+        entry.end_pc = try reader.readInt(u16, std.builtin.Endian.big);
+        entry.handler_pc = try reader.readInt(u16, std.builtin.Endian.big);
+        entry.catch_type = try reader.readInt(u16, std.builtin.Endian.big);
         return entry;
-    }
-
-    pub fn encode(self: ExceptionTableEntry, writer: anytype) !void {
-        try writer.writeIntBig(u16, self.start_pc);
-        try writer.writeIntBig(u16, self.end_pc);
-        try writer.writeIntBig(u16, self.handler_pc);
-        try writer.writeIntBig(u16, self.catch_type);
     }
 };
 
@@ -117,24 +95,24 @@ pub const CodeAttribute = struct {
     attributes: std.ArrayListUnmanaged(AttributeInfo),
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !CodeAttribute {
-        var max_stack = try reader.readIntBig(u16);
-        var max_locals = try reader.readIntBig(u16);
+        const max_stack = try reader.readInt(u16, std.builtin.Endian.big);
+        const max_locals = try reader.readInt(u16, std.builtin.Endian.big);
 
-        var code_length = try reader.readIntBig(u32);
+        const code_length = try reader.readInt(u32, std.builtin.Endian.big);
         var code = try std.ArrayListUnmanaged(u8).initCapacity(allocator, code_length);
         code.items.len = code_length;
         _ = try reader.readAll(code.items);
 
-        var exception_table_len = try reader.readIntBig(u16);
+        const exception_table_len = try reader.readInt(u16, std.builtin.Endian.big);
         var exception_table = try std.ArrayListUnmanaged(ExceptionTableEntry).initCapacity(allocator, exception_table_len);
         exception_table.items.len = exception_table_len;
         for (exception_table.items) |*et| et.* = try ExceptionTableEntry.decode(reader);
 
-        var attributes_length = try reader.readIntBig(u16);
+        var attributes_length = try reader.readInt(u16, std.builtin.Endian.big);
         var attributes_index: usize = 0;
         var attributes = try std.ArrayListUnmanaged(AttributeInfo).initCapacity(allocator, attributes_length);
         while (attributes_index < attributes_length) : (attributes_index += 1) {
-            var decoded = try AttributeInfo.decode(constant_pool, allocator, reader);
+            const decoded = try AttributeInfo.decode(constant_pool, allocator, reader);
             if (decoded == .unknown) {
                 attributes_length -= 1;
                 continue;
@@ -157,24 +135,10 @@ pub const CodeAttribute = struct {
     }
 
     pub fn calcAttrLen(self: CodeAttribute) u32 {
-        var len: u32 = 2 + 2 + 4 + @intCast(u32, self.code.items.len) + 2 + 2;
+        var len: u32 = 2 + 2 + 4 + @as(u32, @intCast(self.code.items.len)) + 2 + 2;
         for (self.attributes.items) |att| len += att.calcAttrLen();
-        len += 8 * @intCast(u32, self.exception_table.items.len);
+        len += 8 * @as(u32, @intCast(self.exception_table.items.len));
         return len;
-    }
-
-    pub fn encode(self: CodeAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, self.max_stack);
-        try writer.writeIntBig(u16, self.max_locals);
-
-        try writer.writeIntBig(u32, @intCast(u32, self.code.items.len));
-        try writer.writeAll(self.code.items);
-
-        try writer.writeIntBig(u16, @intCast(u16, self.exception_table.items.len));
-        for (self.exception_table.items) |et| try et.encode(writer);
-
-        try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
-        for (self.attributes.items) |at| try at.encode(writer);
     }
 
     pub fn deinit(self: *CodeAttribute) void {
@@ -195,14 +159,9 @@ pub const LineNumberTableEntry = struct {
 
     pub fn decode(reader: anytype) !LineNumberTableEntry {
         var entry: LineNumberTableEntry = undefined;
-        entry.start_pc = try reader.readIntBig(u16);
-        entry.line_number = try reader.readIntBig(u16);
+        entry.start_pc = try reader.readInt(u16, std.builtin.Endian.big);
+        entry.line_number = try reader.readInt(u16, std.builtin.Endian.big);
         return entry;
-    }
-
-    pub fn encode(self: LineNumberTableEntry, writer: anytype) !void {
-        try writer.writeIntBig(u16, self.start_pc);
-        try writer.writeIntBig(u16, self.line_number);
     }
 };
 
@@ -215,7 +174,7 @@ pub const LineNumberTableAttribute = struct {
     line_number_table: std.ArrayListUnmanaged(LineNumberTableEntry),
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !LineNumberTableAttribute {
-        var line_number_table_length = try reader.readIntBig(u16);
+        const line_number_table_length = try reader.readInt(u16, std.builtin.Endian.big);
 
         var line_number_table = try std.ArrayListUnmanaged(LineNumberTableEntry).initCapacity(allocator, line_number_table_length);
         line_number_table.items.len = line_number_table_length;
@@ -230,13 +189,8 @@ pub const LineNumberTableAttribute = struct {
     }
 
     pub fn calcAttrLen(self: LineNumberTableAttribute) u32 {
-        var len: u32 = 2 + 4 * @intCast(u32, self.line_number_table.items.len);
+        const len: u32 = 2 + 4 * @as(u32, @intCast(self.line_number_table.items.len));
         return len;
-    }
-
-    pub fn encode(self: LineNumberTableAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, @intCast(u16, self.line_number_table.items.len));
-        for (self.line_number_table.items) |entry| try entry.encode(writer);
     }
 
     pub fn deinit(self: *LineNumberTableAttribute) void {
@@ -257,17 +211,13 @@ pub const SourceFileAttribute = struct {
             .allocator = allocator,
             .constant_pool = constant_pool,
 
-            .source_file_index = try reader.readIntBig(u16),
+            .source_file_index = try reader.readInt(u16, std.builtin.Endian.big),
         };
     }
 
     pub fn calcAttrLen(self: SourceFileAttribute) u32 {
         _ = self;
         return 2;
-    }
-
-    pub fn encode(self: SourceFileAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, self.source_file_index);
     }
 
     pub fn deinit(self: *SourceFileAttribute) void {
@@ -284,11 +234,11 @@ pub const ExceptionsAttribute = struct {
     exception_index_table: std.ArrayListUnmanaged(u16),
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !ExceptionsAttribute {
-        var exception_index_table_length = try reader.readIntBig(u16);
+        const exception_index_table_length = try reader.readInt(u16, std.builtin.Endian.big);
 
         var exception_index_table = try std.ArrayListUnmanaged(u16).initCapacity(allocator, exception_index_table_length);
         exception_index_table.items.len = exception_index_table_length;
-        for (exception_index_table.items) |*entry| entry.* = try reader.readIntBig(u16);
+        for (exception_index_table.items) |*entry| entry.* = try reader.readInt(u16, std.builtin.Endian.big);
 
         return ExceptionsAttribute{
             .allocator = allocator,
@@ -299,13 +249,8 @@ pub const ExceptionsAttribute = struct {
     }
 
     pub fn calcAttrLen(self: ExceptionsAttribute) u32 {
-        var len: u32 = 2 + 2 * @intCast(u32, self.exception_index_table.items.len);
+        const len: u32 = 2 + 2 * @as(u32, @intCast(self.exception_index_table.items.len));
         return len;
-    }
-
-    pub fn encode(self: ExceptionsAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, @intCast(u16, self.exception_index_table.items.len));
-        for (self.exception_index_table.items) |entry| try writer.writeIntBig(u16, entry);
     }
 
     pub fn deinit(self: *ExceptionsAttribute) void {
@@ -326,17 +271,13 @@ pub const ConstantValueAttribute = struct {
             .allocator = allocator,
             .constant_pool = constant_pool,
 
-            .constantvalue_index = try reader.readIntBig(u16),
+            .constantvalue_index = try reader.readInt(u16, std.builtin.Endian.big),
         };
     }
 
     pub fn calcAttrLen(self: ConstantValueAttribute) u32 {
         _ = self;
         return 2;
-    }
-
-    pub fn encode(self: ConstantValueAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, self.constantvalue_index);
     }
 
     pub fn deinit(self: *ConstantValueAttribute) void {
@@ -361,11 +302,6 @@ pub const DeprecatedAttribute = struct {
     pub fn calcAttrLen(self: DeprecatedAttribute) u32 {
         _ = self;
         return 0;
-    }
-
-    pub fn encode(self: DeprecatedAttribute, writer: anytype) anyerror!void {
-        _ = self;
-        _ = writer;
     }
 
     pub fn deinit(self: *DeprecatedAttribute) void {
@@ -415,29 +351,29 @@ pub const ElementValue = union(ElementTag) {
     },
 
     pub fn decode(allocator: std.mem.Allocator, reader: anytype) anyerror!ElementValue {
-        const value_tag = try reader.readEnum(ElementTag, .Big);
+        const value_tag = try reader.readEnum(ElementTag, .big);
         const value: ElementValue = switch (value_tag) {
-            .Byte => .{ .Byte = try reader.readIntBig(u16) },
-            .Char => .{ .Char = try reader.readIntBig(u16) },
-            .Double => .{ .Double = try reader.readIntBig(u16) },
-            .Float => .{ .Float = try reader.readIntBig(u16) },
-            .Int => .{ .Int = try reader.readIntBig(u16) },
-            .Long => .{ .Long = try reader.readIntBig(u16) },
-            .Short => .{ .Short = try reader.readIntBig(u16) },
-            .Boolean => .{ .Boolean = try reader.readIntBig(u16) },
-            .String => .{ .String = try reader.readIntBig(u16) },
+            .Byte => .{ .Byte = try reader.readInt(u16, std.builtin.Endian.big) },
+            .Char => .{ .Char = try reader.readInt(u16, std.builtin.Endian.big) },
+            .Double => .{ .Double = try reader.readInt(u16, std.builtin.Endian.big) },
+            .Float => .{ .Float = try reader.readInt(u16, std.builtin.Endian.big) },
+            .Int => .{ .Int = try reader.readInt(u16, std.builtin.Endian.big) },
+            .Long => .{ .Long = try reader.readInt(u16, std.builtin.Endian.big) },
+            .Short => .{ .Short = try reader.readInt(u16, std.builtin.Endian.big) },
+            .Boolean => .{ .Boolean = try reader.readInt(u16, std.builtin.Endian.big) },
+            .String => .{ .String = try reader.readInt(u16, std.builtin.Endian.big) },
             .EnumConstant => .{ .EnumConstant = .{
-                .type_name_index = try reader.readIntBig(u16),
-                .const_name_index = try reader.readIntBig(u16),
+                .type_name_index = try reader.readInt(u16, std.builtin.Endian.big),
+                .const_name_index = try reader.readInt(u16, std.builtin.Endian.big),
             } },
-            .Class => .{ .Class = try reader.readIntBig(u16) },
+            .Class => .{ .Class = try reader.readInt(u16, std.builtin.Endian.big) },
             .AnnotationType => annotation: {
                 const annotation = try allocator.create(Annotation);
                 annotation.* = try Annotation.decode(allocator, reader);
                 break :annotation .{ .AnnotationType = annotation };
             },
             .Array => array: {
-                const num_values = try reader.readIntBig(u16);
+                const num_values = try reader.readInt(u16, std.builtin.Endian.big);
                 const values = try allocator.alloc(ElementValue, num_values);
                 for (values) |*value| {
                     value.* = try ElementValue.decode(allocator, reader);
@@ -449,24 +385,6 @@ pub const ElementValue = union(ElementTag) {
             },
         };
         return value;
-    }
-
-    pub fn encode(self: ElementValue, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, @enumToInt(self));
-        switch (self) {
-            .EnumConstant => |econst| {
-                try writer.writeIntBig(u16, econst.type_name_index);
-                try writer.writeIntBig(u16, econst.const_name_index);
-            },
-            .AnnotationType => |anno| {
-                try anno.encode(writer);
-            },
-            .Array => |array| {
-                try writer.writeIntBig(u16, array.num_values);
-                for (array.values) |value| try value.encode(writer);
-            },
-            inline else => |value| try writer.writeIntBig(u16, value),
-        }
     }
 
     pub fn calcAttrLen(self: ElementValue) u32 {
@@ -491,16 +409,11 @@ pub const AnnotationValuePair = struct {
     element_name_index: u16,
     value: ElementValue,
     pub fn decode(allocator: std.mem.Allocator, reader: anytype) !AnnotationValuePair {
-        const element_name_index = try reader.readIntBig(u16);
+        const element_name_index = try reader.readInt(u16, std.builtin.Endian.big);
         return AnnotationValuePair{
             .element_name_index = element_name_index,
             .value = try ElementValue.decode(allocator, reader),
         };
-    }
-
-    pub fn encode(self: AnnotationValuePair, writer: anytype) !void {
-        try writer.writeIntBig(u16, self.element_name_index);
-        try self.value.encode(writer);
     }
 
     pub fn calcAttrLen(self: AnnotationValuePair) u32 {
@@ -517,8 +430,8 @@ pub const Annotation = struct {
     num_element_value_pairs: u16,
     element_value_pairs: []AnnotationValuePair,
     pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Annotation {
-        const type_index = try reader.readIntBig(u16);
-        const num_element_value_pairs = try reader.readIntBig(u16);
+        const type_index = try reader.readInt(u16, std.builtin.Endian.big);
+        const num_element_value_pairs = try reader.readInt(u16, std.builtin.Endian.big);
         const element_value_pairs = try allocator.alloc(AnnotationValuePair, num_element_value_pairs);
         for (element_value_pairs) |*value_pair| {
             value_pair.* = try AnnotationValuePair.decode(allocator, reader);
@@ -529,12 +442,6 @@ pub const Annotation = struct {
             .num_element_value_pairs = num_element_value_pairs,
             .element_value_pairs = element_value_pairs,
         };
-    }
-
-    pub fn encode(self: Annotation, writer: anytype) !void {
-        try writer.writeIntBig(u16, self.type_index);
-        try writer.writeIntBig(u16, self.num_element_value_pairs);
-        for (self.element_value_pairs) |pair| try pair.encode(writer);
     }
 
     pub fn calcAttrLen(self: Annotation) u32 {
@@ -561,7 +468,7 @@ pub const RuntimeVisibleAnnotationsAttribute = struct {
     annotations: []Annotation,
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !RuntimeVisibleAnnotationsAttribute {
-        const num_annotations = try reader.readIntBig(u16);
+        const num_annotations = try reader.readInt(u16, std.builtin.Endian.big);
         const annotations = try allocator.alloc(Annotation, num_annotations);
         for (annotations) |*annotation| {
             annotation.* = try Annotation.decode(allocator, reader);
@@ -579,11 +486,6 @@ pub const RuntimeVisibleAnnotationsAttribute = struct {
         var len: u32 = 2;
         for (self.annotations) |anno| len += anno.calcAttrLen();
         return len;
-    }
-
-    pub fn encode(self: RuntimeVisibleAnnotationsAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, self.num_annotations);
-        for (self.annotations) |annotation| try annotation.encode(writer);
     }
 
     pub fn deinit(self: *RuntimeVisibleAnnotationsAttribute) void {

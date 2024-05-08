@@ -42,8 +42,8 @@ pub fn Serialize(comptime T: type) type {
 
             inline for (std.meta.fields(T)[1..]) |field| {
                 @field(value, field.name) = switch (@typeInfo(field.type)) {
-                    .Int => try reader.readIntBig(field.type),
-                    .Enum => |info| @intToEnum(field.type, try reader.readIntBig(info.tag_type)),
+                    .Int => try reader.readInt(field.type, std.builtin.Endian.big),
+                    .Enum => |info| @as(field.type, @enumFromInt(try reader.readInt(info.tag_type, std.builtin.Endian.big))),
                     else => @compileError("Decode not implemented: " ++ @typeName(field.type)),
                 };
             }
@@ -56,12 +56,12 @@ pub fn Serialize(comptime T: type) type {
 /// Locate a Utf8Info entry that has the value `bytes`
 /// Useful for attributes that need an entry describing their name
 pub fn locateUtf8Entry(self: *ConstantPool, bytes: []const u8) !u16 {
-    var get_or_put_output = try self.utf8_entries_map.getOrPut(self.allocator, bytes);
+    const get_or_put_output = try self.utf8_entries_map.getOrPut(self.allocator, bytes);
     if (get_or_put_output.found_existing) {
         return get_or_put_output.value_ptr.*;
     } else {
-        var entry = try self.entries.addOne(self.allocator);
-        get_or_put_output.value_ptr.* = @intCast(u16, self.entries.items.len);
+        const entry = try self.entries.addOne(self.allocator);
+        get_or_put_output.value_ptr.* = @as(u16, @intCast(self.entries.items.len));
         entry.* = Entry{ .utf8 = .{ .constant_pool = self, .bytes = try self.allocator.dupe(u8, bytes) } };
         return get_or_put_output.value_ptr.*;
     }
@@ -70,9 +70,9 @@ pub fn locateUtf8Entry(self: *ConstantPool, bytes: []const u8) !u16 {
 pub fn decodeEntries(self: *ConstantPool, reader: anytype) !void {
     var constant_pool_index: u16 = 0;
     while (constant_pool_index < self.entries.items.len) : (constant_pool_index += 1) {
-        var cp = try self.decodeEntry(reader);
+        const cp = try self.decodeEntry(reader);
         if (cp == .utf8) {
-            var get_or_put_output = try self.utf8_entries_map.getOrPut(self.allocator, cp.utf8.bytes);
+            const get_or_put_output = try self.utf8_entries_map.getOrPut(self.allocator, cp.utf8.bytes);
             if (!get_or_put_output.found_existing) {
                 get_or_put_output.value_ptr.* = constant_pool_index + 1;
             }
@@ -87,12 +87,12 @@ pub fn decodeEntries(self: *ConstantPool, reader: anytype) !void {
 }
 
 pub fn decodeEntry(self: *ConstantPool, reader: anytype) !Entry {
-    var tag = try reader.readIntBig(u8);
-    inline for (@typeInfo(Tag).Enum.fields) |f, i| {
+    const tag = try reader.readInt(u8, std.builtin.Endian.big);
+    inline for (@typeInfo(Tag).Enum.fields, 0..) |f, i| {
         const this_tag_value = @field(Tag, f.name);
-        if (tag == @enumToInt(this_tag_value)) {
+        if (tag == @intFromEnum(this_tag_value)) {
             const T = std.meta.fields(Entry)[i].type;
-            var value = if (@hasDecl(T, "decode")) try @field(T, "decode")(self, reader) else try Serialize(T).decode(self, reader);
+            const value = if (@hasDecl(T, "decode")) try @field(T, "decode")(self, reader) else try Serialize(T).decode(self, reader);
             return @unionInit(Entry, f.name, value);
         }
     }
@@ -208,19 +208,14 @@ pub const Utf8Info = struct {
     bytes: []u8,
 
     pub fn decode(constant_pool: *const ConstantPool, reader: anytype) !Self {
-        var length = try reader.readIntBig(u16);
-        var bytes = try constant_pool.allocator.alloc(u8, length);
+        const length = try reader.readInt(u16, std.builtin.Endian.big);
+        const bytes = try constant_pool.allocator.alloc(u8, length);
         _ = try reader.readAll(bytes);
 
         return Self{
             .constant_pool = constant_pool,
             .bytes = bytes,
         };
-    }
-
-    pub fn encode(self: Utf8Info, writer: anytype) !void {
-        try writer.writeIntBig(u16, @intCast(u16, self.bytes.len));
-        try writer.writeAll(self.bytes);
     }
 
     pub fn format(value: Utf8Info, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
@@ -257,13 +252,13 @@ pub const MethodHandleInfo = struct {
 
     // fn parse(allocator: std.mem.Allocator, reader: anytype) !Self {
     //     return Self{
-    //         .reference_kind = @intToEnum(ReferenceKind, try reader.readIntBig(u8)),
-    //         .reference_index = try reader.readIntBig(u16),
+    //         .reference_kind = @intToEnum(ReferenceKind, try reader.readInt(u8, std.builtin.Endian.big)),
+    //         .reference_index = try reader.readInt(u16, std.builtin.Endian.big),
     //     };
     // }
 
     pub fn getReference(self: Self, constant_pool: []Entry) Entry {
-        var ref = constant_pool[self.reference_index - 1];
+        const ref = constant_pool[self.reference_index - 1];
         switch (self.reference_kind) {
             .get_field, .get_static, .put_field, .put_static => std.debug.assert(std.meta.activeTag(ref) == .fieldref),
 
@@ -357,27 +352,4 @@ pub const Entry = union(Tag) {
 
     module: ModuleInfo,
     package: PackageInfo,
-
-    pub fn encode(self: Entry, writer: anytype) !void {
-        inline for (@typeInfo(Tag).Enum.fields) |f, i| {
-            const this_tag_value = @field(Tag, f.name);
-            if (@enumToInt(self) == @enumToInt(this_tag_value)) {
-                try writer.writeByte(@enumToInt(self));
-
-                const T = std.meta.fields(Entry)[i].type;
-                var value = @field(self, f.name);
-
-                if (@hasDecl(T, "encode"))
-                    return try @field(value, "encode")(writer);
-
-                inline for (std.meta.fields(T)[1..]) |field| {
-                    switch (@typeInfo(field.type)) {
-                        .Int => try writer.writeIntBig(field.type, @field(value, field.name)),
-                        .Enum => |info| try writer.writeIntBig(info.tag_type, @enumToInt(@field(value, field.name))),
-                        else => @compileError("Encode not implemented: " ++ @typeName(field.type)),
-                    }
-                }
-            }
-        }
-    }
 };

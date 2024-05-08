@@ -75,7 +75,7 @@ pub const WrappedOperation = union(enum) {
         @setEvalBranchQuota(10000);
 
         inline for (std.meta.fields(ops.Operation)) |operation_field| {
-            comptime var opcode = @field(ops.Opcode, operation_field.name);
+            const opcode = @field(ops.Opcode, operation_field.name);
             if (std.meta.activeTag(op) == opcode) {
                 inline for (std.meta.fields(WrappedOperation)) |wo_field| {
                     if (comptime wo_field.type.matches(opcode, operation_field)) {
@@ -112,8 +112,8 @@ pub const NoOperation = struct {
 };
 
 test "Wrapped: No Operation" {
-    var nop = ops.Operation{ .nop = {} };
-    var nop_wrapped = WrappedOperation.wrap(nop);
+    const nop = ops.Operation{ .nop = {} };
+    const nop_wrapped = WrappedOperation.wrap(nop);
     try std.testing.expect(nop_wrapped == .nop);
 }
 
@@ -127,7 +127,7 @@ pub const PushConstantOperation = union(enum) {
 
     fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
-        return @enumToInt(opcode) >= 0x01 and @enumToInt(opcode) <= 0x11;
+        return @intFromEnum(opcode) >= 0x01 and @intFromEnum(opcode) <= 0x11;
     }
 
     fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) PushConstantOperation {
@@ -163,16 +163,16 @@ pub const PushConstantOperation = union(enum) {
 };
 
 test "Wrapped: Push Constant" {
-    var null_ref_op = ops.Operation{ .aconst_null = {} };
-    var null_ref_wrapped = WrappedOperation.wrap(null_ref_op);
+    const null_ref_op = ops.Operation{ .aconst_null = {} };
+    const null_ref_wrapped = WrappedOperation.wrap(null_ref_op);
     try std.testing.expect(null_ref_wrapped.push_constant == .null_ref);
 
-    var m1_op = ops.Operation{ .iconst_m1 = {} };
-    var m1_wrapped = WrappedOperation.wrap(m1_op);
+    const m1_op = ops.Operation{ .iconst_m1 = {} };
+    const m1_wrapped = WrappedOperation.wrap(m1_op);
     try std.testing.expectEqual(@as(i16, -1), m1_wrapped.push_constant.int);
 
-    var bipush_op = ops.Operation{ .bipush = 17 };
-    var bipush_wrapped = WrappedOperation.wrap(bipush_op);
+    const bipush_op = ops.Operation{ .bipush = 17 };
+    const bipush_wrapped = WrappedOperation.wrap(bipush_op);
     try std.testing.expectEqual(@as(i16, 17), bipush_wrapped.push_constant.int);
 }
 
@@ -212,14 +212,14 @@ pub const LoadConstantOperation = struct {
 };
 
 test "Wrapped: Load From Constant Pool" {
-    var ldc_op = ops.Operation{ .ldc = 7 };
-    var ldc_wrapped = WrappedOperation.wrap(ldc_op);
+    const ldc_op = ops.Operation{ .ldc = 7 };
+    const ldc_wrapped = WrappedOperation.wrap(ldc_op);
 
     try std.testing.expectEqual(ConstantSize.one, ldc_wrapped.load_constant.size);
     try std.testing.expectEqual(@as(u16, 7), ldc_wrapped.load_constant.index);
 
-    var ldc2_op = ops.Operation{ .ldc2_w = 7 };
-    var ldc2_wrapped = WrappedOperation.wrap(ldc2_op);
+    const ldc2_op = ops.Operation{ .ldc2_w = 7 };
+    const ldc2_wrapped = WrappedOperation.wrap(ldc2_op);
 
     try std.testing.expectEqual(ConstantSize.two, ldc2_wrapped.load_constant.size);
     try std.testing.expectEqual(@as(u16, 7), ldc2_wrapped.load_constant.index);
@@ -244,13 +244,13 @@ pub const StoreLocalOperation = struct {
 };
 
 test "Wrapped: Store" {
-    var istore_1_op = ops.Operation{ .istore_1 = {} };
-    var istore_1_wrapped = WrappedOperation.wrap(istore_1_op);
+    const istore_1_op = ops.Operation{ .istore_1 = {} };
+    const istore_1_wrapped = WrappedOperation.wrap(istore_1_op);
     try std.testing.expectEqual(BytecodePrimitive.int, istore_1_wrapped.store_local.kind);
     try std.testing.expectEqual(@as(u16, 1), istore_1_wrapped.store_local.index);
 
-    var istore_n_op = ops.Operation{ .istore = 12 };
-    var istore_n_wrapped = WrappedOperation.wrap(istore_n_op);
+    const istore_n_op = ops.Operation{ .istore = 12 };
+    const istore_n_wrapped = WrappedOperation.wrap(istore_n_op);
     try std.testing.expectEqual(BytecodePrimitive.int, istore_n_wrapped.store_local.kind);
     try std.testing.expectEqual(@as(u16, 12), istore_n_wrapped.store_local.index);
 }
@@ -274,13 +274,13 @@ pub const LoadLocalOperation = struct {
 };
 
 test "Wrapped: Load" {
-    var iload_1_op = ops.Operation{ .iload_1 = {} };
-    var iload_1_wrapped = WrappedOperation.wrap(iload_1_op);
+    const iload_1_op = ops.Operation{ .iload_1 = {} };
+    const iload_1_wrapped = WrappedOperation.wrap(iload_1_op);
     try std.testing.expectEqual(BytecodePrimitive.int, iload_1_wrapped.load_local.kind);
     try std.testing.expectEqual(@as(u16, 1), iload_1_wrapped.load_local.index);
 
-    var iload_n_op = ops.Operation{ .iload = 12 };
-    var iload_n_wrapped = WrappedOperation.wrap(iload_n_op);
+    const iload_n_op = ops.Operation{ .iload = 12 };
+    const iload_n_wrapped = WrappedOperation.wrap(iload_n_op);
     try std.testing.expectEqual(BytecodePrimitive.int, iload_n_wrapped.load_local.kind);
     try std.testing.expectEqual(@as(u16, 12), iload_n_wrapped.load_local.index);
 }
@@ -301,7 +301,7 @@ pub const NumericalOperation = struct {
 
     fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
-        return @enumToInt(opcode) >= 0x60 and @enumToInt(opcode) <= 0x77;
+        return @intFromEnum(opcode) >= 0x60 and @intFromEnum(opcode) <= 0x77;
     }
 
     fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) NumericalOperation {
@@ -315,8 +315,8 @@ pub const NumericalOperation = struct {
 };
 
 test "Wrapped: Numerical" {
-    var add_op = ops.Operation{ .iadd = {} };
-    var add_wrapped = WrappedOperation.wrap(add_op);
+    const add_op = ops.Operation{ .iadd = {} };
+    const add_wrapped = WrappedOperation.wrap(add_op);
 
     try std.testing.expectEqual(BytecodePrimitive.int, add_wrapped.numerical.kind);
     try std.testing.expectEqual(NumericalOperator.add, add_wrapped.numerical.operator);
@@ -347,7 +347,7 @@ pub const ConvertOperation = struct {
 
     fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
-        return @enumToInt(opcode) >= 0x85 and @enumToInt(opcode) <= 0x93;
+        return @intFromEnum(opcode) >= 0x85 and @intFromEnum(opcode) <= 0x93;
     }
 
     fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) ConvertOperation {
@@ -361,14 +361,14 @@ pub const ConvertOperation = struct {
 };
 
 test "Wrapped: Convert" {
-    var i2b_op = ops.Operation{ .i2b = {} };
-    var i2b_wrapped = WrappedOperation.wrap(i2b_op);
+    const i2b_op = ops.Operation{ .i2b = {} };
+    const i2b_wrapped = WrappedOperation.wrap(i2b_op);
     try std.testing.expect(i2b_wrapped == .convert);
     try std.testing.expectEqual(BytecodePrimitive.int, i2b_wrapped.convert.from);
     try std.testing.expectEqual(BytecodePrimitive.byte, i2b_wrapped.convert.to);
 
-    var i2l_op = ops.Operation{ .i2l = {} };
-    var i2l_wrapped = WrappedOperation.wrap(i2l_op);
+    const i2l_op = ops.Operation{ .i2l = {} };
+    const i2l_wrapped = WrappedOperation.wrap(i2l_op);
     try std.testing.expect(i2l_wrapped == .convert);
     try std.testing.expectEqual(BytecodePrimitive.int, i2l_wrapped.convert.from);
     try std.testing.expectEqual(BytecodePrimitive.long, i2l_wrapped.convert.to);
@@ -379,7 +379,7 @@ pub const ReturnOperation = struct {
 
     fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
-        return @enumToInt(opcode) >= 0xac and @enumToInt(opcode) <= 0xb1;
+        return @intFromEnum(opcode) >= 0xac and @intFromEnum(opcode) <= 0xb1;
     }
 
     fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) ReturnOperation {
@@ -392,11 +392,11 @@ pub const ReturnOperation = struct {
 };
 
 test "Wrapped: Return" {
-    var return_op = ops.Operation{ .@"return" = {} };
-    var return_wrapped = WrappedOperation.wrap(return_op);
+    const return_op = ops.Operation{ .@"return" = {} };
+    const return_wrapped = WrappedOperation.wrap(return_op);
     try std.testing.expectEqual(@as(?BytecodePrimitive, null), return_wrapped.@"return".kind);
 
-    var areturn_op = ops.Operation{ .areturn = {} };
-    var areturn_wrapped = WrappedOperation.wrap(areturn_op);
+    const areturn_op = ops.Operation{ .areturn = {} };
+    const areturn_wrapped = WrappedOperation.wrap(areturn_op);
     try std.testing.expectEqual(BytecodePrimitive.reference, areturn_wrapped.@"return".kind.?);
 }
