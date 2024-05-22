@@ -274,7 +274,7 @@ pub const LookupSwitchParams = struct {
     pairs: []LookupPair,
 
     pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
-        const skipped_bytes = std.mem.alignForward(reader.context.pos, 4) - reader.context.pos;
+        const skipped_bytes = std.mem.alignForward(usize, reader.context.pos, 4) - reader.context.pos;
         try reader.skipBytes(skipped_bytes, .{});
 
         const default_offset = try reader.readInt(i32, std.builtin.Endian.big);
@@ -305,7 +305,7 @@ pub const TableSwitchParams = struct {
     jumps: []i32,
 
     pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
-        const skipped_bytes = std.mem.alignForward(reader.context.pos, 4) - reader.context.pos;
+        const skipped_bytes = std.mem.alignForward(usize, reader.context.pos, 4) - reader.context.pos;
         try reader.skipBytes(skipped_bytes, .{});
 
         const default_offset = try reader.readInt(i32, std.builtin.Endian.big);
@@ -353,63 +353,6 @@ pub const NewArrayParams = enum(u8) {
 };
 
 pub const Operation = union(Opcode) {
-    aload: LocalIndexOperation,
-    anewarray: ConstantPoolRefOperation,
-    astore: LocalIndexOperation,
-    bipush: BipushParams,
-    checkcast: ConstantPoolRefOperation,
-    dload: LocalIndexOperation,
-    dstore: LocalIndexOperation,
-    fload: LocalIndexOperation,
-    fstore: LocalIndexOperation,
-    getfield: ConstantPoolRefOperation,
-    getstatic: ConstantPoolRefOperation,
-
-    goto: BranchToOffsetOperation,
-    if_acmpeq: BranchToOffsetOperation,
-    if_acmpne: BranchToOffsetOperation,
-    if_icmpeq: BranchToOffsetOperation,
-    if_icmpge: BranchToOffsetOperation,
-    if_icmpgt: BranchToOffsetOperation,
-    if_icmple: BranchToOffsetOperation,
-    if_icmplt: BranchToOffsetOperation,
-    if_icmpne: BranchToOffsetOperation,
-    ifeq: BranchToOffsetOperation,
-    ifge: BranchToOffsetOperation,
-    ifgt: BranchToOffsetOperation,
-    ifle: BranchToOffsetOperation,
-    iflt: BranchToOffsetOperation,
-    ifne: BranchToOffsetOperation,
-    ifnonnull: BranchToOffsetOperation,
-    ifnull: BranchToOffsetOperation,
-    jsr: BranchToOffsetOperation,
-
-    goto_w: BranchToOffsetWideOperation,
-    jsr_w: BranchToOffsetWideOperation,
-
-    iinc: IincParams,
-    iload: LocalIndexOperation,
-    instanceof: ConstantPoolRefOperation,
-    invokedynamic: InvokeDynamicParams,
-    invokeinterface: InvokeInterfaceParams,
-    invokespecial: ConstantPoolRefOperation,
-    invokestatic: ConstantPoolRefOperation,
-    invokevirtual: ConstantPoolRefOperation,
-    istore: LocalIndexOperation,
-    ldc: u8, // NOTE: This is not a local variable! It's probably for compat
-    ldc_w: ConstantPoolRefOperation,
-    ldc2_w: ConstantPoolRefOperation,
-    lookupswitch: LookupSwitchParams,
-    tableswitch: TableSwitchParams,
-    new: ConstantPoolRefOperation,
-    multianewarray: MultiANewArrayParams,
-    lload: LocalIndexOperation,
-    lstore: LocalIndexOperation,
-    sipush: SipushParams,
-    putstatic: ConstantPoolRefOperation,
-    putfield: ConstantPoolRefOperation,
-    newarray: NewArrayParams,
-
     nop: void,
     aconst_null: void,
     iconst_m1: void,
@@ -426,6 +369,17 @@ pub const Operation = union(Opcode) {
     fconst_2: void,
     dconst_0: void,
     dconst_1: void,
+    bipush: BipushParams,
+    sipush: SipushParams,
+    ldc: u8, // NOTE: This is not a local variable! It's probably for compat
+    ldc_w: ConstantPoolRefOperation,
+    ldc2_w: ConstantPoolRefOperation,
+
+    iload: LocalIndexOperation,
+    lload: LocalIndexOperation,
+    fload: LocalIndexOperation,
+    dload: LocalIndexOperation,
+    aload: LocalIndexOperation,
     iload_0: void,
     iload_1: void,
     iload_2: void,
@@ -446,6 +400,7 @@ pub const Operation = union(Opcode) {
     aload_1: void,
     aload_2: void,
     aload_3: void,
+
     iaload: void,
     laload: void,
     faload: void,
@@ -454,6 +409,12 @@ pub const Operation = union(Opcode) {
     baload: void,
     caload: void,
     saload: void,
+
+    istore: LocalIndexOperation,
+    lstore: LocalIndexOperation,
+    fstore: LocalIndexOperation,
+    dstore: LocalIndexOperation,
+    astore: LocalIndexOperation,
     istore_0: void,
     istore_1: void,
     istore_2: void,
@@ -482,6 +443,7 @@ pub const Operation = union(Opcode) {
     bastore: void,
     castore: void,
     sastore: void,
+
     pop: void,
     pop2: void,
     dup: void,
@@ -491,6 +453,7 @@ pub const Operation = union(Opcode) {
     dup2_x1: void,
     dup2_x2: void,
     swap: void,
+
     iadd: void,
     ladd: void,
     fadd: void,
@@ -527,6 +490,9 @@ pub const Operation = union(Opcode) {
     lor: void,
     ixor: void,
     lxor: void,
+
+    iinc: IincParams,
+
     i2l: void,
     i2f: void,
     i2d: void,
@@ -542,23 +508,76 @@ pub const Operation = union(Opcode) {
     i2b: void,
     i2c: void,
     i2s: void,
+
     lcmp: void,
     fcmpl: void,
     fcmpg: void,
     dcmpl: void,
     dcmpg: void,
+
+    ifeq: BranchToOffsetOperation,
+    ifne: BranchToOffsetOperation,
+    iflt: BranchToOffsetOperation,
+    ifge: BranchToOffsetOperation,
+    ifgt: BranchToOffsetOperation,
+    ifle: BranchToOffsetOperation,
+
+    if_icmpeq: BranchToOffsetOperation,
+    if_icmpne: BranchToOffsetOperation,
+    if_icmplt: BranchToOffsetOperation,
+    if_icmpge: BranchToOffsetOperation,
+    if_icmpgt: BranchToOffsetOperation,
+    if_icmple: BranchToOffsetOperation,
+    if_acmpeq: BranchToOffsetOperation,
+    if_acmpne: BranchToOffsetOperation,
+
+    goto: BranchToOffsetOperation,
+    jsr: BranchToOffsetOperation,
     ret: void,
+
+    tableswitch: TableSwitchParams,
+    lookupswitch: LookupSwitchParams,
+
     ireturn: void,
     lreturn: void,
     freturn: void,
     dreturn: void,
     areturn: void,
     @"return": void,
+
+    getstatic: ConstantPoolRefOperation,
+    putstatic: ConstantPoolRefOperation,
+
+    getfield: ConstantPoolRefOperation,
+    putfield: ConstantPoolRefOperation,
+
+    invokevirtual: ConstantPoolRefOperation,
+    invokespecial: ConstantPoolRefOperation,
+    invokestatic: ConstantPoolRefOperation,
+    invokeinterface: InvokeInterfaceParams,
+    invokedynamic: InvokeDynamicParams,
+
+    new: ConstantPoolRefOperation,
+    newarray: NewArrayParams,
+    anewarray: ConstantPoolRefOperation,
     arraylength: void,
+
     athrow: void,
+    checkcast: ConstantPoolRefOperation,
+    instanceof: ConstantPoolRefOperation,
+
     monitorenter: void,
     monitorexit: void,
+
     wide: void,
+    multianewarray: MultiANewArrayParams,
+
+    ifnull: BranchToOffsetOperation,
+    ifnonnull: BranchToOffsetOperation,
+
+    goto_w: BranchToOffsetWideOperation,
+    jsr_w: BranchToOffsetWideOperation,
+
     breakpoint: void,
     impdep1: void,
     impdep2: void,
@@ -616,7 +635,7 @@ pub const Operation = union(Opcode) {
                 if (@intFromEnum(std.meta.stringToEnum(Opcode, op.name).?) == opcode) {
                     return @unionInit(Operation, op.name, if (op.type == void) {} else if (@typeInfo(op.type) == .Struct) z: {
                         break :z if (@hasDecl(op.type, "decode")) try @field(op.type, "decode")(allocator, reader) else unreachable;
-                    } else if (@typeInfo(op.type) == .Enum) try reader.readEnum(op.type, .Big) else if (@typeInfo(op.type) == .Int) try reader.readInt(op.type, std.builtin.Endian.big) else unreachable);
+                    } else if (@typeInfo(op.type) == .Enum) try reader.readEnum(op.type, .big) else if (@typeInfo(op.type) == .Int) try reader.readInt(op.type, std.builtin.Endian.big) else unreachable);
                 }
             }
         }
